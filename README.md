@@ -17,6 +17,7 @@ and no requirement for a predetermined layout.
 
 ## Release
 
+- [2025/05/01] 🔥 We release the code and demo for the `FLUX.1-dev` version of [AnyStory](https://github.com/junjiehe96/AnyStory), a unified approach to general subject personalization.
 - [2024/10/18] 🔥 We release the inference code and demo, which has simply
   integrated [ControlNet](https://github.com/lllyasviel/ControlNet)
   , [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter),
