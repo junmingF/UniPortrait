@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from diffusers import ControlNetModel
-from diffusers.pipelines.controlnet import MultiControlNetModel
+# from diffusers.pipelines.controlnet import MultiControlNetModel
+from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel  
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from .curricular_face.backbone import get_model

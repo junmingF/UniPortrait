@@ -1,69 +1,87 @@
-import os
-from io import BytesIO
+import os  
+from io import BytesIO  
 
-import cv2
-import gradio as gr
-import numpy as np
-import torch
-from PIL import Image
-from diffusers import DDIMScheduler, AutoencoderKL, ControlNetModel, StableDiffusionControlNetPipeline
-from insightface.app import FaceAnalysis
-from insightface.utils import face_align
+import cv2  
+import gradio as gr  
+import numpy as np  
+import torch  
+from PIL import Image  
+from diffusers import DDIMScheduler, AutoencoderKL, ControlNetModel, StableDiffusionControlNetPipeline  
+from insightface.app import FaceAnalysis  
+from insightface.utils import face_align  
 
-from uniportrait import inversion
-from uniportrait.uniportrait_attention_processor import attn_args
-from uniportrait.uniportrait_pipeline import UniPortraitPipeline
+from uniportrait import inversion  
+from uniportrait.uniportrait_attention_processor import attn_args  
+from uniportrait.uniportrait_pipeline import UniPortraitPipeline  
 
-port = 7860
+device = "cuda"  
+torch_dtype = torch.float16  
 
-device = "cuda"
-torch_dtype = torch.float16
+# 设置 Hugging Face 缓存目录（可选）  
+os.environ["HF_HOME"] = "/home/fujm/.cache/huggingface/hub"  
 
-# base
-base_model_path = "SG161222/Realistic_Vision_V5.1_noVAE"
-vae_model_path = "stabilityai/sd-vae-ft-mse"
-controlnet_pose_ckpt = "lllyasviel/control_v11p_sd15_openpose"
-# specific
-image_encoder_path = "models/IP-Adapter/models/image_encoder"
-ip_ckpt = "models/IP-Adapter/models/ip-adapter_sd15.bin"
-face_backbone_ckpt = "models/glint360k_curricular_face_r101_backbone.bin"
-uniportrait_faceid_ckpt = "models/uniportrait-faceid_sd15.bin"
-uniportrait_router_ckpt = "models/uniportrait-router_sd15.bin"
+# base  
+base_model_path = "SG161222/Realistic_Vision_V5.1_noVAE"  
+vae_model_path = "stabilityai/sd-vae-ft-mse"  
+controlnet_pose_ckpt = "lllyasviel/control_v11p_sd15_openpose"  
+# specific  
+image_encoder_path = "/disk1/fujm/IPAdapter/image_encoder/models/image_encoder"  
+ip_ckpt = "/disk1/fujm/IPAdapter/models/models/ip-adapter_sd15.bin"  
+face_backbone_ckpt = "/disk1/fujm/unip/UniPortrait/glint360k_curricular_face_r101_backbone.bin"  
+uniportrait_faceid_ckpt = "/disk1/fujm/unip/UniPortrait/uniportrait-faceid_sd15.bin"  
+uniportrait_router_ckpt = "/disk1/fujm/unip/UniPortrait/uniportrait-router_sd15.bin"  
 
-# load controlnet
-pose_controlnet = ControlNetModel.from_pretrained(controlnet_pose_ckpt, torch_dtype=torch_dtype)
+# load controlnet  
+print("开始加载 ControlNet 模型...")  
+pose_controlnet = ControlNetModel.from_pretrained(  
+    controlnet_pose_ckpt,   
+    torch_dtype=torch_dtype,   
+    # local_files_only=True  # 强制只从本地加载  
+)  
+print("ControlNet 模型加载成功")  
 
-# load SD pipeline
-noise_scheduler = DDIMScheduler(
-    num_train_timesteps=1000,
-    beta_start=0.00085,
-    beta_end=0.012,
-    beta_schedule="scaled_linear",
-    clip_sample=False,
-    set_alpha_to_one=False,
-    steps_offset=1,
-)
-vae = AutoencoderKL.from_pretrained(vae_model_path).to(dtype=torch_dtype)
-pipe = StableDiffusionControlNetPipeline.from_pretrained(
-    base_model_path,
-    controlnet=[pose_controlnet],
-    torch_dtype=torch_dtype,
-    scheduler=noise_scheduler,
-    vae=vae,
-    # feature_extractor=None,
-    # safety_checker=None,
-)
+# load SD pipeline  
+noise_scheduler = DDIMScheduler(  
+    num_train_timesteps=1000,  
+    beta_start=0.00085,  
+    beta_end=0.012,  
+    beta_schedule="scaled_linear",  
+    clip_sample=False,  
+    set_alpha_to_one=False,  
+    steps_offset=1,  
+)  
+print("开始加载 Stable Diffusion 管道...")  
+vae = AutoencoderKL.from_pretrained(  
+    vae_model_path,   
+    torch_dtype=torch_dtype,   
+    # local_files_only=True  # 强制只从本地加载  
+)  
+pipe = StableDiffusionControlNetPipeline.from_pretrained(  
+    base_model_path,  
+    controlnet=[pose_controlnet],  # 加[]是可能有多个控制模型的情况  
+    torch_dtype=torch_dtype,  
+    scheduler=noise_scheduler,  
+    vae=vae,  
+    # local_files_only=True  # 强制只从本地加载  
+)  
+# load uniportrait pipeline  
+print("开始加载 UniPortrait 管道...")   
+uniportrait_pipeline = UniPortraitPipeline(pipe, image_encoder_path, ip_ckpt=ip_ckpt,  
+                                           face_backbone_ckpt=face_backbone_ckpt,  
+                                           uniportrait_faceid_ckpt=uniportrait_faceid_ckpt,  
+                                           uniportrait_router_ckpt=uniportrait_router_ckpt,  
+                                           device=device, torch_dtype=torch_dtype)  
 
-# load uniportrait pipeline
-uniportrait_pipeline = UniPortraitPipeline(pipe, image_encoder_path, ip_ckpt=ip_ckpt,
-                                           face_backbone_ckpt=face_backbone_ckpt,
-                                           uniportrait_faceid_ckpt=uniportrait_faceid_ckpt,
-                                           uniportrait_router_ckpt=uniportrait_router_ckpt,
-                                           device=device, torch_dtype=torch_dtype)
 
-# load face detection assets
-face_app = FaceAnalysis(providers=['CUDAExecutionProvider'], allowed_modules=["detection"])
-face_app.prepare(ctx_id=0, det_size=(640, 640))
+print("UniPortrait 管道加载成功")  
+
+print("开始加载人脸检测模型...")  
+
+# load face detection assets  
+face_app = FaceAnalysis(providers=['CUDAExecutionProvider'], allowed_modules=["detection"])  
+face_app.prepare(ctx_id=0, det_size=(640, 640))  
+
+print("人脸检测模型加载成功")  
 
 
 def pad_np_bgr_image(np_image, scale=1.25):
@@ -146,7 +164,7 @@ def text_to_single_id_generation_process(
         num_samples=1, seed=-1,
         image_resolution="512x512",
         inference_steps=25,
-):
+ ):
     if seed == -1:
         seed = None
 
@@ -199,7 +217,7 @@ def text_to_multi_id_generation_process(
         num_samples=1, seed=-1,
         image_resolution="512x512",
         inference_steps=25,
-):
+ ):
     if seed == -1:
         seed = None
 
@@ -295,6 +313,8 @@ def image_to_single_id_generation_process(
 
     prompt = [""] * (1 + num_samples)
     negative_prompt = [""] * (1 + num_samples)
+    print("这里看看prompt的输出结果")
+    print("Prompt:", prompt)
     images = uniportrait_pipeline.generate(prompt=prompt, negative_prompt=negative_prompt,
                                            pil_ip_image=pil_ip_image,
                                            cond_faceids=cond_faceids, face_structure_scale=face_structure_scale,
@@ -563,6 +583,8 @@ def image_to_single_id_generation_block():
     run_button.click(fn=image_to_single_id_generation_process, inputs=ips, outputs=[result_gallery])
 
 
+
+
 if __name__ == "__main__":
     os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
 
@@ -646,5 +668,5 @@ if __name__ == "__main__":
             image_to_single_id_generation_block()
 
         gr.Markdown(citation)
-
-    block.launch(server_name='0.0.0.0', share=False, server_port=port, allowed_paths=["/"])
+    block.launch(server_name='0.0.0.0', share=False, allowed_paths=["/"])
+    print('这里是启动demo')
