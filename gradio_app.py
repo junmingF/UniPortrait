@@ -24,6 +24,7 @@ os.environ["HF_HOME"] = "/home/fujm/.cache/huggingface/hub"
 base_model_path = "SG161222/Realistic_Vision_V5.1_noVAE"  
 vae_model_path = "stabilityai/sd-vae-ft-mse"  
 controlnet_pose_ckpt = "lllyasviel/control_v11p_sd15_openpose"  
+
 # specific  
 image_encoder_path = "/disk1/fujm/IPAdapter/image_encoder/models/image_encoder"  
 ip_ckpt = "/disk1/fujm/IPAdapter/models/models/ip-adapter_sd15.bin"  

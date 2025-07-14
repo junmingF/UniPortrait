@@ -1,5 +1,5 @@
 import os  
-import csv  
+import pandas as pd 
 import argparse  
 from io import BytesIO  
 import cv2  
@@ -162,12 +162,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="使用 UniPortrait 生成图像的脚本。")  
     parser.add_argument("--device", type=str, default="2", help="指定要使用的 GPU 设备，例如 '0' 或 '0,1'。")  
     parser.add_argument("--start_row", type=int, default=0, help="CSV 文件中要处理的起始行索引（从 0 开始）。")  
-    parser.add_argument("--end_row", type=int, default=47, help="CSV 文件中要处理的结束行索引（包含）。")  
+    parser.add_argument("--end_row", type=int, default=1500, help="CSV 文件中要处理的结束行索引（包含）。")  
     parser.add_argument("--faceid_scale", type=float, default=0.8, help="决定人脸多像参考的图像。")
     parser.add_argument("--face_structure_scale", type=float, default=0.4, help="决定姿势多像参考的图像。")
-    parser.add_argument("--image_dir", type=str, default="/disk2/fujm/UniPortrait-main/image", help="包含输入图像的目录。") 
-    parser.add_argument("--prompt_csv", type=str, default="/disk2/fujm/UniPortrait-main/assets/iisl.csv", help="提示信息的 CSV 文件路径。")  
-    parser.add_argument("--result_dir", type=str, default="/disk2/fujm/UniPortrait-main/iisl/unip_iisl", help="保存生成图像的目录。")  
+    parser.add_argument("--image_dir", type=str, default="/disk1/fjm/img", help="包含输入图像的目录。") 
+    parser.add_argument("--prompt_xlsx", type=str, default="/disk1/fjm/LLM/xlsx/0713_with_sentence-thking.xlsx", help="提示信息的 xlsx 文件路径。")  
+    parser.add_argument("--result_dir", type=str, default="/disk1/fjm/resultimg/unip/test4_0-1500", help="保存生成图像的目录。")  
     args = parser.parse_args()  
 
     os.environ["HF_HOME"] = "/home/fujm/.cache/huggingface/hub"  
@@ -195,7 +195,7 @@ if __name__ == "__main__":
     ip_ckpt = "/disk1/fujm/IPAdapter/models/models/ip-adapter_sd15.bin"  
     face_backbone_ckpt = "/disk1/fujm/unip/UniPortrait/glint360k_curricular_face_r101_backbone.bin"  
     uniportrait_faceid_ckpt = "/disk1/fujm/unip/UniPortrait/uniportrait-faceid_sd15.bin"  
-    uniportrait_router_ckpt = "/disk1/fujm/unip/UniPortrait/uniportrait-router_sd15.bin" 
+    uniportrait_router_ckpt = "/disk1/fujm/unip/UniPortrait/uniportrait-router_sd15.bin"
 
     # 加载 ControlNet 模型  
     pose_controlnet = ControlNetModel.from_pretrained(  
@@ -259,44 +259,28 @@ if __name__ == "__main__":
     os.makedirs(args.result_dir, exist_ok=True)  
 
     # 读取 prompt.csv 文件并选择指定行范围  
-    prompts = {}  
-    # with open(args.prompt_csv, 'r', encoding='utf-8') as csvfile:  
-    #     reader = csv.reader(csvfile)  
-    #     header = next(reader)  # 跳过表头  
-    #     for idx, row in enumerate(reader):  
-    #         if idx < args.start_row:  
-    #             continue  
-    #         if idx > args.end_row:  
-    #             break  
-    #         if len(row) < 2:  
-    #             print(f"警告: 第 {idx} 行格式不正确，跳过。")  
-    #             continue  
-    #         imagename, prompt_text = row  
-    #         # 如果需要转换 image_name 格式，可以在这里处理  
-    #         try:  
-    #             numeric_part = int(os.path.splitext(imagename)[0])  
-    #             new_imagename = f"{numeric_part}.jpg"  
-    #         except ValueError:  
-    #             new_imagename = imagename  # 如果无法转换，则保留原名称  
-    #         prompts[new_imagename] = prompt_text  
-    with open(args.prompt_csv, 'r', encoding='gbk') as csvfile:
-        reader = csv.reader(csvfile)
-        header = next(reader)  # 跳过表头
-        for idx, row in enumerate(reader):
-            if idx < args.start_row:
-                continue
-            if idx > args.end_row:
-                break
-            if len(row) < 2:
-                print(f"警告: 第 {idx} 行格式不正确，跳过。")
-                continue
-            imagename, prompt_text = row
-            try:
-                numeric_part = int(os.path.splitext(imagename)[0])
-                new_imagename = f"{numeric_part}.jpg"
-            except ValueError:
-                new_imagename = imagename
-            prompts[new_imagename] = prompt_text
+    prompts = {}   
+    df = pd.read_excel(args.prompt_xlsx, engine="openpyxl")
+    # 注意：df默认带表头，index=0是数据区的第一行
+
+    for idx in range(args.start_row, args.end_row + 1):
+        # 行越界保护
+        if idx >= len(df):
+            break
+        row = df.iloc[idx]
+        try:
+            imagename = str(row[6])      # 第7列
+            prompt_text = str(row[5])    # 第6列
+        except Exception:
+            print(f"警告: 第 {idx+2} 行格式不正确，跳过。")
+            continue
+        try:
+            numeric_part = int(os.path.splitext(imagename)[0])
+            new_imagename = f"{numeric_part}.jpg"
+        except Exception:
+            new_imagename = imagename
+        prompts[new_imagename] = prompt_text
+    
 
     # 获取所有图像文件名（假设为 start_row 到 end_row 的序号）  
     image_filenames = [f"{i}.jpg" for i in range(args.start_row, args.end_row + 1)]  
